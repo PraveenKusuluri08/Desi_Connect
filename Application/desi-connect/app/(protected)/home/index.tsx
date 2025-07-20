@@ -136,6 +136,7 @@ export default function HomeScreen() {
                 styles.button,
                 pressed && styles.pressed,
               ]}
+              onPress={() => router.push("/myrides")}
             >
               <Ionicons
                 name="chatbubble-ellipses"
@@ -143,7 +144,21 @@ export default function HomeScreen() {
                 color="#fff"
                 style={styles.icon}
               />
-              <Text style={styles.buttonText}>Chat with Friends</Text>
+              <Text style={styles.buttonText}>My Rides</Text>
+            </Pressable>
+            <Pressable
+              style={({ pressed }) => [
+                styles.button,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Ionicons
+                name="chatbubble-ellipses"
+                size={22}
+                color="#fff"
+                style={styles.icon}
+              />
+              <Text style={styles.buttonText}>Chat</Text>
             </Pressable>
           </Animatable.View>
         </LinearGradient>

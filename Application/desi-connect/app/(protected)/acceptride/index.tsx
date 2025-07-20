@@ -1,3 +1,4 @@
+// AcceptRideScreen.tsx
 import React, { useEffect, useState } from "react";
 import {
   View,
@@ -7,6 +8,10 @@ import {
   FlatList,
   Pressable,
   TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Button,
 } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
@@ -14,38 +19,65 @@ import {
   doc,
   getDoc,
   getDocs,
-  addDoc,
   query,
   where,
+  addDoc,
 } from "firebase/firestore";
-import { db, auth } from "@/config/fbConfig";
+import { db } from "@/config/fbConfig";
 import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "@/context/AuthContext";
+import {
+  sendChatMessage,
+  listenToMessages,
+} from "../../../components/utils/chatService";
+import * as Linking from "expo-linking";
 
 export default function AcceptRideScreen() {
-  const { rideId } = useLocalSearchParams();
+  const { user } = useAuth();
+  const { rideId, from, to, date, seats, notes, rideCreatedBy, status } =
+    useLocalSearchParams();
+
   const [ride, setRide] = useState<any>(null);
   const [acceptedUsers, setAcceptedUsers] = useState<any[]>([]);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMsg, setNewMsg] = useState("");
+  const [isRideOwner, setIsRideOwner] = useState(false);
+  const [hasAcceptedRide, setHasAcceptedRide] = useState(false);
 
   useEffect(() => {
-    if (rideId) {
-      fetchRideDetails();
-      fetchAcceptedUsers();
-    }
+    fetchRideDetails();
+    fetchAcceptedUsers();
+    checkIfAccepted();
   }, [rideId]);
 
   useEffect(() => {
-    if (selectedUser) {
-      fetchChatMessages();
+    if (ride?.rideCreatedBy && user?.uid) {
+      const isOwner = ride.rideCreatedBy === user.uid;
+      setIsRideOwner(isOwner);
+
+      if (!isOwner) {
+        setSelectedUser({ uid: ride.rideCreatedBy, name: "Ride Owner" });
+      }
     }
+  }, [ride, user]);
+
+  useEffect(() => {
+    if (!rideId || !user?.uid || !selectedUser?.uid) return;
+
+    const senderId = user.uid;
+    const receiverId = selectedUser.uid;
+
+    const unsub = listenToMessages(rideId, senderId, receiverId, setMessages);
+    return () => unsub?.();
   }, [selectedUser]);
 
   const fetchRideDetails = async () => {
     const docRef = doc(db, "rides", rideId as string);
     const snapshot = await getDoc(docRef);
-    if (snapshot.exists()) setRide({ id: snapshot.id, ...snapshot.data() });
+    if (snapshot.exists()) {
+      setRide({ id: snapshot.id, ...snapshot.data() });
+    }
   };
 
   const fetchAcceptedUsers = async () => {
@@ -54,242 +86,305 @@ export default function AcceptRideScreen() {
       where("rideId", "==", rideId)
     );
     const snapshot = await getDocs(q);
-    const users = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+
+    const users = await Promise.all(
+      snapshot.docs.map(async (docSnap) => {
+        const { email, uid } = docSnap.data();
+        const userSnapshot = await getDocs(
+          query(collection(db, "users"), where("email", "==", email))
+        );
+
+        const data = userSnapshot.docs[0]?.data();
+        return {
+          name: data?.name || "Desi User",
+          phone: data?.phone || "Not Provided",
+          uid,
+          email,
+        };
+      })
+    );
+
     setAcceptedUsers(users);
   };
 
-  const fetchChatMessages = async () => {
-    const chatId = getChatId(auth.currentUser?.uid!, selectedUser.uid);
-    const q = collection(db, `ride_chats/${chatId}/messages`);
+  const checkIfAccepted = async () => {
+    const q = query(
+      collection(db, "ride_acceptances"),
+      where("rideId", "==", rideId),
+      where("email", "==", user?.email)
+    );
     const snapshot = await getDocs(q);
-    const msgs = snapshot.docs.map((doc) => doc.data());
-    setMessages(msgs);
-  };
-
-  const sendMessage = async () => {
-    if (!newMsg.trim()) return;
-    const chatId = getChatId(auth.currentUser?.uid!, selectedUser.uid);
-    await addDoc(collection(db, `ride_chats/${chatId}/messages`), {
-      text: newMsg,
-      sender: auth.currentUser?.uid,
-      timestamp: new Date().toISOString(),
-    });
-    setNewMsg("");
-    fetchChatMessages();
+    setHasAcceptedRide(!snapshot.empty);
   };
 
   const handleAcceptRide = async () => {
+    if (!user?.email) return;
+
     await addDoc(collection(db, "ride_acceptances"), {
       rideId,
-      uid: auth.currentUser?.uid,
-      name: auth.currentUser?.displayName || "Anonymous",
+      email: user.email,
+      uid: user.uid,
+      timestamp: new Date(),
     });
+
+    setHasAcceptedRide(true);
+    setSelectedUser({ uid: rideCreatedBy, name: "Ride Owner" });
     fetchAcceptedUsers();
   };
 
-  const getChatId = (uid1: string, uid2: string) => {
-    return [uid1, uid2].sort().join("_");
+  const handleSendMessage = async () => {
+    if (!newMsg.trim() || !user?.uid || !selectedUser?.uid) return;
+
+    await sendChatMessage(rideId, user.uid, selectedUser.uid, newMsg);
+    setNewMsg("");
   };
 
   const formatDate = (d: any) => {
-    const date = d?.toDate ? d.toDate() : new Date(d);
-    return date.toLocaleString("en-US", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
+    const dateObj = d?.toDate ? d.toDate() : new Date(d);
+    return dateObj.toLocaleString();
   };
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={styles.container}
+      keyboardVerticalOffset={90}
+    >
       <Stack.Screen options={{ headerShown: false }} />
-      <Pressable style={styles.acceptButton} onPress={handleAcceptRide}>
-        <Ionicons name="checkmark-circle" size={20} color="#fff" />
-        <Text style={styles.acceptButtonText}>Accept Ride</Text>
-      </Pressable>
 
-      {/* Ride Info */}
       {ride && (
         <View style={styles.rideBox}>
           <Text style={styles.heading}>🚘 Ride Details</Text>
-          <Text style={styles.subText}>
-            {ride.from} ➡️ {ride.to}
+          <Text>
+            {ride.from} ➞ {ride.to}
           </Text>
-          <Text style={styles.subText}>Date: {formatDate(ride.date)}</Text>
-          <Text style={styles.subText}>Seats: total {ride.seats} members</Text>
-          <Text style={styles.subText}>Notes: {ride.notes || "None"}</Text>
+          <Text>Date: {formatDate(ride.date)}</Text>
+          <Text>Seats: {ride.seats}</Text>
+          <Text>Notes: {ride.notes || "None"}</Text>
         </View>
       )}
 
-      {/* Accepted Users List */}
-      <Text style={styles.heading}>Accepted Users</Text>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.userScroll}
-      >
-        {acceptedUsers.map((user, index) => (
-          <Pressable
-            key={index}
-            onPress={() => setSelectedUser(user)}
-            style={[
-              styles.userBubble,
-              selectedUser?.uid === user.uid && styles.selectedBubble,
-            ]}
-          >
-            <Ionicons name="person-circle-outline" size={40} color="#6A0DAD" />
-            <Text style={styles.userText}>{user.name || "User"}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      {!isRideOwner && !hasAcceptedRide && (
+        <View style={{ margin: 16 }}>
+          <Button title="Accept Ride" onPress={handleAcceptRide} />
+        </View>
+      )}
 
-      {/* Chat Section */}
+      {isRideOwner && (
+        <ScrollView horizontal style={styles.userScroll}>
+          {acceptedUsers.map((u, idx) => (
+            <Pressable
+              key={idx}
+              onPress={() => setSelectedUser(u)}
+              style={[
+                styles.userBubble,
+                selectedUser?.uid === u.uid && styles.selectedBubble,
+              ]}
+            >
+              <Ionicons
+                name="person-circle-outline"
+                size={40}
+                color="#6A0DAD"
+              />
+              <Text>{u.name}</Text>
+              <Text
+                style={{ color: "#007AFF" }}
+                onPress={() => Linking.openURL(`tel:${u.phone}`)}
+              >
+                📞 {u.phone}
+              </Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
       {selectedUser && (
-        <View style={styles.chatBox}>
-          <Text style={styles.chatHeading}>
-            Chat with {selectedUser.name || "User"}
-          </Text>
+        <View style={styles.chatContainer}>
+          {!isRideOwner && (
+            <View style={styles.chatHeader}>
+              <Ionicons
+                name="person-circle-outline"
+                size={32}
+                color="#6A0DAD"
+              />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={{ fontWeight: "bold", fontSize: 16 }}>
+                  {selectedUser.name}
+                </Text>
+                <Text
+                  style={{ color: "#007AFF" }}
+                  onPress={() => Linking.openURL(`tel:${selectedUser.phone}`)}
+                >
+                  📞 {selectedUser.phone}
+                </Text>
+              </View>
+            </View>
+          )}
+
           <FlatList
             data={messages}
             keyExtractor={(_, i) => i.toString()}
-            renderItem={({ item }) => (
-              <View
-                style={[
-                  styles.chatBubble,
-                  item.sender === auth.currentUser?.uid
-                    ? styles.myBubble
-                    : styles.theirBubble,
-                ]}
+            renderItem={({ item }) => {
+              const isCurrentUser = item.sender === user?.uid;
+              return (
+                <View
+                  style={[
+                    styles.chatBubbleBase,
+                    isCurrentUser ? styles.myBubble : styles.theirBubble,
+                  ]}
+                >
+                  <Text style={styles.chatText}>{item.text}</Text>
+                  <Text style={styles.timestamp}>
+                    {new Date(
+                      item.createdAt?.seconds * 1000
+                    ).toLocaleTimeString()}
+                  </Text>
+                </View>
+              );
+            }}
+            contentContainerStyle={{ padding: 12, paddingBottom: 80 }}
+            ListEmptyComponent={
+              <Text
+                style={{ textAlign: "center", color: "#999", marginTop: 20 }}
               >
-                <Text style={styles.chatText}>{item.text}</Text>
-              </View>
-            )}
-            contentContainerStyle={{ paddingBottom: 80 }}
+                No messages yet. Start the conversation!
+              </Text>
+            }
           />
 
-          {/* Input */}
-          <View style={styles.inputRow}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type your message..."
-              value={newMsg}
-              onChangeText={setNewMsg}
-            />
-            <Pressable style={styles.sendBtn} onPress={sendMessage}>
-              <Ionicons name="send" size={20} color="#fff" />
-            </Pressable>
+          <View style={styles.messageInputContainer}>
+            <View style={styles.messageBox}>
+              <TextInput
+                style={styles.input}
+                placeholder="Type a message..."
+                placeholderTextColor="#999"
+                value={newMsg}
+                onChangeText={setNewMsg}
+                multiline
+              />
+              <Pressable onPress={handleSendMessage} style={styles.sendButton}>
+                <Ionicons name="send" size={22} color="#fff" />
+              </Pressable>
+            </View>
           </View>
         </View>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#fefefe",
-    padding: 16,
-  },
-  acceptButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#4B0082",
-    padding: 10,
-    borderRadius: 10,
-    alignSelf: "flex-start",
-    marginBottom: 10,
-  },
-  acceptButtonText: {
-    color: "#fff",
-    marginLeft: 6,
-    fontSize: 15,
-    fontWeight: "600",
-  },
+  container: { flex: 1, backgroundColor: "#fff" },
+  heading: { fontSize: 18, fontWeight: "600", marginBottom: 8 },
   rideBox: {
-    backgroundColor: "#f4edff",
-    padding: 14,
+    backgroundColor: "#f0f0ff",
+    padding: 16,
     borderRadius: 12,
-    marginBottom: 16,
+    margin: 16,
   },
-  heading: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#4B0082",
-    marginBottom: 10,
-  },
-  subText: {
-    fontSize: 15,
-    color: "#444",
-    marginBottom: 4,
-  },
-  userScroll: {
-    marginBottom: 10,
-  },
-  userBubble: {
-    alignItems: "center",
-    marginRight: 14,
-  },
-  selectedBubble: {
-    borderBottomWidth: 2,
-    borderBottomColor: "#6A0DAD",
-  },
-  userText: {
-    fontSize: 14,
-    color: "#333",
-    marginTop: 4,
-  },
-  chatBox: {
-    flex: 1,
-    borderTopWidth: 1,
-    borderTopColor: "#ddd",
-    paddingTop: 20,
-    paddingHorizontal: 10,
-    backgroundColor: "#fff",
-  },
-  chatHeading: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-    color: "#6A0DAD",
-  },
-  chatBubble: {
-    maxWidth: "75%",
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 10,
-  },
-  myBubble: {
-    alignSelf: "flex-end",
-    backgroundColor: "#d6bbff",
-  },
-  theirBubble: {
-    alignSelf: "flex-start",
-    backgroundColor: "#f1f0f0",
-  },
-  chatText: {
-    fontSize: 15,
-    color: "#000",
-  },
+  userScroll: { paddingHorizontal: 16, marginBottom: 10 },
+  userBubble: { alignItems: "center", marginRight: 14 },
+  selectedBubble: { borderBottomWidth: 2, borderBottomColor: "#6A0DAD" },
+  chatBox: { flex: 1, backgroundColor: "#fff" },
+  // chatBubbleBase: {
+  //   padding: 10,
+  //   borderRadius: 10,
+  //   marginVertical: 4,
+  //   maxWidth: "70%",
+  // },
+  // myBubble: { alignSelf: "flex-end", backgroundColor: "#d6bbff" },
+  // theirBubble: { alignSelf: "flex-start", backgroundColor: "#f1f0f0" },
+  chatText: { fontSize: 15 },
+  timestamp: { fontSize: 10, textAlign: "right", color: "#888", marginTop: 4 },
   inputRow: {
-    position: "absolute",
-    bottom: 10,
-    left: 16,
-    right: 16,
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    padding: 10,
+    borderTopWidth: 1,
+    borderColor: "#ccc",
   },
   textInput: {
     flex: 1,
     backgroundColor: "#f4f4f4",
     borderRadius: 20,
     paddingHorizontal: 14,
-    paddingVertical: 10,
     fontSize: 15,
   },
   sendBtn: {
+    marginLeft: 10,
     backgroundColor: "#6A0DAD",
-    padding: 12,
+    padding: 10,
     borderRadius: 25,
+  },
+  chatContainer: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+  },
+  chatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    backgroundColor: "#f8f8ff",
+  },
+  chatBubbleBase: {
+    padding: 10,
+    borderRadius: 12,
+    marginVertical: 4,
+    maxWidth: "75%",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  myBubble: {
+    alignSelf: "flex-end",
+    backgroundColor: "#e5d4ff",
+  },
+  theirBubble: {
+    alignSelf: "flex-start",
+    backgroundColor: "#f1f1f1",
+  },
+  sendButton: {
+    backgroundColor: "#6A0DAD",
+    padding: 10,
+    borderRadius: 20,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  messageInputContainer: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: "#e2e2e2",
+    paddingBottom: Platform.OS === "ios" ? 30 : 10,
+    paddingLeft:10
+  },
+
+  messageBox: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    backgroundColor: "#f1f1f1",
+    borderRadius: 25,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === "ios" ? 12 : 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  input: {
+    flex: 1,
+    fontSize: 16,
+    maxHeight: 100,
+    paddingRight: 10,
+    justifyContent: "center",
+    alignItems: "center",
+    
   },
 });
