@@ -12,7 +12,7 @@ import { useState } from "react";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { Stack, useRouter } from "expo-router";
 import {db} from "../../../config/fbConfig"
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, doc, setDoc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
 export default function PostRideScreen() {
   const router = useRouter();
@@ -32,13 +32,16 @@ export default function PostRideScreen() {
     }
   };
 
-  const handlePostRide = () => {
-    if (!from || !to || !seats) {
-      alert("Please fill all required fields.");
-      return;
-    }
+  const handlePostRide = async () => {
+  if (!from || !to || !seats) {
+    alert("Please fill all required fields.");
+    return;
+  }
 
+  try {
+    const rideRef = doc(collection(db, "rides")); 
     const rideData = {
+      id: rideRef.id,
       from,
       to,
       date: date.toISOString(),
@@ -48,19 +51,15 @@ export default function PostRideScreen() {
       rideCreatedBy: user?.uid,
     };
 
-    console.log("Posting ride:", rideData);
-    addDoc(collection(db, "rides"), rideData)
-      .then(() => {
-        console.log("Ride posted successfully");
-      })
-      .catch((error) => {
-        console.error("Error posting ride:", error);
-        alert("Failed to post ride. Please try again.");
-      });
+    await setDoc(rideRef, rideData);
 
     alert("🚗 Ride posted successfully!");
-    router.push("/home"); 
-  };
+    router.push("/home");
+  } catch (error) {
+    console.error("Error posting ride:", error);
+    alert("Failed to post ride. Please try again.");
+  }
+};
 
   return (
     <>

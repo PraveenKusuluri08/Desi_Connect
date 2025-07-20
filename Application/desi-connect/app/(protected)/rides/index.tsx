@@ -26,12 +26,17 @@ export default function FindRideScreen() {
     state: { rides, loading },
   } = useRides();
 
+  
   useEffect(() => {
     if (rides && rides.length > 0) {
       setFilteredRides(rides);
     }
   }, [rides]);
-
+  
+  console.log('====================================');
+  console.log("Rides in FindRideScreen:", rides);
+  console.log('====================================');
+  
   const onChangeDate = (event: any, selectedDate?: Date) => {
     setShowDatePicker(false);
     if (selectedDate) setDate(selectedDate);
@@ -75,6 +80,9 @@ export default function FindRideScreen() {
     );
   }
   const handleAcceptRide = (ride: any) => {
+    console.log('====================================');
+    console.log("Accepting ride:", ride);
+    console.log('====================================');
     router.push({
       pathname: "/acceptride",
       params: {
