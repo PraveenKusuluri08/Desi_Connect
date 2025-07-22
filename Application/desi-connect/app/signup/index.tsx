@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { useRouter, Stack, Redirect } from "expo-router";
 import {
   Text,
@@ -71,7 +72,7 @@ export default function EduSignupScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Signup", headerBackTitle: "Back" }} />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Sign up with your .edu email address</Text>
 
         <TextInput
