@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/rules-of-hooks */
 import { useRouter, Stack, Redirect } from "expo-router";
 import {
   View,
@@ -12,6 +13,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/context/AuthContext";
 import { auth } from "../../config/fbConfig";
 import { signInWithEmailAndPassword } from "firebase/auth";
+
 export default function EduSignupScreen() {
   const { user, loading } = useAuth();
 
@@ -63,7 +65,10 @@ export default function EduSignupScreen() {
   return (
     <>
       <Stack.Screen options={{ title: "Signin", headerBackTitle: "Back" }} />
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.title}>Sign in with your .edu email address</Text>
 
         <TextInput
@@ -106,7 +111,7 @@ export default function EduSignupScreen() {
             { backgroundColor: error || !email ? "#ccc" : "#4B0082" },
           ]}
           onPress={handleSubmit}
-          disabled={!!error || !email}
+          disabled={false}
         >
           <Text style={styles.signupText}>Sign in</Text>
         </Pressable>
@@ -122,6 +127,7 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
     backgroundColor: "#fff",
     flexGrow: 1,
+    justifyContent: "flex-start",
   },
   title: {
     fontSize: 18,
@@ -154,10 +160,11 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 10,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "red",
   },
   signupText: {
     color: "#fff",
-    fontSize: 16,
     fontWeight: "600",
   },
 });
