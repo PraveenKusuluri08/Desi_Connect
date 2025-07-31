@@ -1,4 +1,4 @@
-import { Redirect, Slot, Stack } from "expo-router";
+import { Redirect, Slot } from "expo-router";
 import { useAuth } from "../../context/AuthContext";
 
 export default function ProtectedLayout() {
@@ -10,5 +10,6 @@ export default function ProtectedLayout() {
     return <Redirect href="/signup" />;
   }
 
-  return <Stack />;
+  // Renders the actual screen content
+  return <Slot />;
 }
