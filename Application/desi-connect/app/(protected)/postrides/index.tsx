@@ -1,29 +1,31 @@
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  Platform,
-  ScrollView,
-  Dimensions,
-  StatusBar,
-  SafeAreaView,
-  Animated,
-} from "react-native";
-import { Ionicons } from "@expo/vector-icons";
-import { useState, useRef, useEffect } from "react";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { Stack, useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-import * as Animatable from "react-native-animatable";
-import { db } from "../../../config/fbConfig";
-import { addDoc, collection, doc, setDoc } from "firebase/firestore";
 import { useAuth } from "@/context/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
+import { LinearGradient } from "expo-linear-gradient";
+import { Stack, useRouter } from "expo-router";
+import { collection, doc, setDoc } from "firebase/firestore";
+import { useRef, useState } from "react";
+import {
+    Animated,
+    Dimensions,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
+import * as Animatable from "react-native-animatable";
+import ReliableAddressInput from "../../../components/ReliableAddressInput";
+import { AddressSuggestion } from "../../../components/utils/placesService";
+import { db } from "../../../config/fbConfig";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Modern Input Component
+// Modern Input Component (for non-address inputs)
 const ModernInput = ({ 
   icon, 
   placeholder, 
@@ -140,6 +142,10 @@ export default function PostRideScreen() {
   const [seats, setSeats] = useState(1);
   const [notes, setNotes] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [fromFocused, setFromFocused] = useState(false);
+  const [toFocused, setToFocused] = useState(false);
+  
+
 
   const buttonScale = useRef(new Animated.Value(1)).current;
 
@@ -156,6 +162,29 @@ export default function PostRideScreen() {
 
   const handleSeatIncrease = () => {
     if (seats < 8) setSeats(seats + 1);
+  };
+
+  const handleFromAddressSelect = (address: AddressSuggestion) => {
+    console.log('Selected from address:', address);
+    // You can store additional address details here if needed
+  };
+
+  const handleToAddressSelect = (address: AddressSuggestion) => {
+    console.log('Selected to address:', address);
+    // You can store additional address details here if needed
+  };
+
+  // Location picker navigation
+  const handleOpenLocationPicker = () => {
+    if (from && to) {
+      router.push({
+        pathname: '/location-picker',
+        params: {
+          pickupAddress: from,
+          destinationAddress: to
+        }
+      });
+    }
   };
 
   const handlePostRide = async () => {
@@ -242,9 +271,7 @@ export default function PostRideScreen() {
           >
             <Ionicons name="car-sport" size={48} color="#fff" />
             <Text style={styles.heroTitle}>Share Your Ride</Text>
-            <Text style={styles.heroSubtitle}>
-              Help others travel while earning money and reducing carbon footprint
-            </Text>
+          
           </LinearGradient>
         </Animatable.View>
 
@@ -252,21 +279,67 @@ export default function PostRideScreen() {
         <View style={styles.formSection}>
           <Text style={styles.sectionTitle}>Trip Details</Text>
           
-          <ModernInput
+          <ReliableAddressInput
             icon="radio-button-on"
             placeholder="From (Pickup location)"
             value={from}
             onChangeText={setFrom}
+            onAddressSelect={handleFromAddressSelect}
+            isFocused={fromFocused}
+            onFocus={() => setFromFocused(true)}
+            onBlur={() => setFromFocused(false)}
             delay={200}
           />
 
-          <ModernInput
+          <ReliableAddressInput
             icon="location"
             placeholder="To (Destination)"
             value={to}
             onChangeText={setTo}
+            onAddressSelect={handleToAddressSelect}
+            isFocused={toFocused}
+            onFocus={() => setToFocused(true)}
+            onBlur={() => setToFocused(false)}
             delay={300}
           />
+
+          {/* Location Picker Button - DISABLED */}
+          {/* <Animatable.View
+            animation="fadeInUp"
+            delay={400}
+            style={styles.inputContainer}
+          >
+            <Pressable
+              style={[
+                styles.locationPickerButton,
+                (!from || !to) && styles.locationPickerButtonDisabled
+              ]}
+              onPress={handleOpenLocationPicker}
+              disabled={!from || !to}
+            >
+              <LinearGradient
+                colors={(!from || !to) ? ['#E5E7EB', '#D1D5DB'] : ['#3B82F6', '#2563EB']}
+                style={styles.locationPickerGradient}
+              >
+                <Ionicons 
+                  name="map" 
+                  size={24} 
+                  color={(!from || !to) ? "#9CA3AF" : "#FFFFFF"} 
+                />
+                <Text style={[
+                  styles.locationPickerText,
+                  (!from || !to) && styles.locationPickerTextDisabled
+                ]}>
+                  {(!from || !to) ? 'Fill both locations first' : 'View Route on Map'}
+                </Text>
+                <Ionicons 
+                  name="chevron-forward" 
+                  size={20} 
+                  color={(!from || !to) ? "#9CA3AF" : "#FFFFFF"} 
+                />
+              </LinearGradient>
+            </Pressable>
+          </Animatable.View> */}
 
           <ModernDatePicker
             date={date}
@@ -371,6 +444,8 @@ export default function PostRideScreen() {
           </Animated.View>
         </Animatable.View>
       </View>
+
+
     </SafeAreaView>
   );
 }
@@ -422,7 +497,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 120,
+    paddingBottom: 100,
   },
 
   // Hero Section
@@ -453,18 +528,21 @@ const styles = StyleSheet.create({
   // Form Section
   formSection: {
     paddingHorizontal: 20,
-    paddingTop: 32,
+    paddingTop: 24,
+    position: 'relative',
+    zIndex: 1,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 20,
+    marginBottom: 16,
   },
 
   // Input Styles
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
+    zIndex: 999,
   },
   inputWrapper: {
     flexDirection: 'row',
@@ -613,33 +691,60 @@ const styles = StyleSheet.create({
   // Tips Section
   tipsSection: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 12,
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 8,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
   tipsTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   tipsList: {
-    gap: 12,
+    gap: 8,
   },
   tipItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
   tipText: {
-    fontSize: 14,
+    fontSize: 12,
     color: '#6B7280',
     flex: 1,
+  },
+
+  // Location Picker Button
+  locationPickerButton: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginBottom: 16,
+  },
+  locationPickerGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+  },
+  locationPickerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    flex: 1,
+    marginLeft: 12,
+  },
+  locationPickerButtonDisabled: {
+    opacity: 0.6,
+  },
+  locationPickerTextDisabled: {
+    color: '#9CA3AF',
   },
 
   // Bottom Action

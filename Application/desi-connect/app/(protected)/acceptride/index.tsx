@@ -1,36 +1,38 @@
 // AcceptRideScreen.tsx
-import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  FlatList,
-  Pressable,
-  TextInput,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Button,
-} from "react-native";
+import { db } from "@/config/fbConfig";
+import { useAuth } from "@/context/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
+import * as Linking from "expo-linking";
 import { Stack, useLocalSearchParams } from "expo-router";
 import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  query,
-  where,
-  addDoc,
+    addDoc,
+    collection,
+    doc,
+    getDoc,
+    getDocs,
+    query,
+    setDoc,
+    updateDoc,
+    where,
 } from "firebase/firestore";
-import { db } from "@/config/fbConfig";
-import { Ionicons } from "@expo/vector-icons";
-import { useAuth } from "@/context/AuthContext";
+import React, { useEffect, useState } from "react";
 import {
-  sendChatMessage,
-  listenToMessages,
+    Alert,
+    Button,
+    FlatList,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
+} from "react-native";
+import {
+    listenToMessages,
+    sendChatMessage,
 } from "../../../components/utils/chatService";
-import * as Linking from "expo-linking";
 
 export default function AcceptRideScreen() {
   const { user } = useAuth();
@@ -117,19 +119,72 @@ export default function AcceptRideScreen() {
     setHasAcceptedRide(!snapshot.empty);
   };
 
+  const createRideChat = async (rideId: string, rideName: string, participants: string[]) => {
+    try {
+      // Check if ride chat already exists
+      const rideChatQuery = query(
+        collection(db, "chats"),
+        where("type", "==", "ride"),
+        where("rideId", "==", rideId)
+      );
+      const rideChatSnapshot = await getDocs(rideChatQuery);
+      
+      if (!rideChatSnapshot.empty) {
+        // Add user to existing ride chat
+        const chatDoc = rideChatSnapshot.docs[0];
+        const currentParticipants = chatDoc.data().participants || [];
+        if (!currentParticipants.includes(user?.uid)) {
+          await updateDoc(doc(db, "chats", chatDoc.id), {
+            participants: [...currentParticipants, user?.uid]
+          });
+        }
+        return chatDoc.id;
+      } else {
+        // Create new ride chat
+        const chatRef = doc(collection(db, "chats"));
+        const rideChat = {
+          id: chatRef.id,
+          name: rideName,
+          type: "ride",
+          participants: participants,
+          rideId: rideId,
+          unreadCount: 0,
+          createdAt: new Date(),
+        };
+        await setDoc(chatRef, rideChat);
+        return chatRef.id;
+      }
+    } catch (error) {
+      console.error("Error creating ride chat:", error);
+      throw error;
+    }
+  };
+
   const handleAcceptRide = async () => {
     if (!user?.email) return;
 
-    await addDoc(collection(db, "ride_acceptances"), {
-      rideId,
-      email: user.email,
-      uid: user.uid,
-      timestamp: new Date(),
-    });
+    try {
+      await addDoc(collection(db, "ride_acceptances"), {
+        rideId,
+        email: user.email,
+        uid: user.uid,
+        timestamp: new Date(),
+      });
 
-    setHasAcceptedRide(true);
-    setSelectedUser({ uid: rideCreatedBy, name: "Ride Owner" });
-    fetchAcceptedUsers();
+      // Create or join ride chat
+      const rideName = `${from} → ${to}`;
+      const participants = [rideCreatedBy, user?.uid].filter(Boolean);
+      await createRideChat(rideId as string, rideName, participants);
+
+      setHasAcceptedRide(true);
+      setSelectedUser({ uid: rideCreatedBy, name: "Ride Owner" });
+      fetchAcceptedUsers();
+      
+      Alert.alert("Success", "Ride accepted successfully! You can now chat with the ride owner.");
+    } catch (error) {
+      console.error("Error accepting ride:", error);
+      Alert.alert("Error", "Failed to accept ride. Please try again.");
+    }
   };
 
   const handleSendMessage = async () => {

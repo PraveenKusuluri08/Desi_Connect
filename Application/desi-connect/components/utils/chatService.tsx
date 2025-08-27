@@ -1,10 +1,10 @@
 import {
-  collection,
-  addDoc,
-  onSnapshot,
-  query,
-  orderBy,
-  Timestamp,
+    addDoc,
+    collection,
+    onSnapshot,
+    orderBy,
+    query,
+    Timestamp,
 } from 'firebase/firestore';
 import { db } from '../../config/fbConfig';
 
@@ -17,7 +17,8 @@ export const sendChatMessage = async (
   rideId: any,
   senderId: string,
   receiverId: string,
-  text: string
+  text: string,
+  senderEmail?: string
 ): Promise<void> => {
   if (!text.trim()) return;
   if (!senderId || !receiverId || senderId === receiverId) {
@@ -32,6 +33,7 @@ export const sendChatMessage = async (
     text,
     sender: senderId,
     receiver: receiverId,
+    senderEmail: senderEmail || '',
     createdAt: Timestamp.now(),
   });
 };
